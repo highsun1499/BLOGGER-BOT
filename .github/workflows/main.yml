@@ -2,7 +2,7 @@ name: Gemini Blogger Bot
 
 on:
   schedule:
-    - cron: '0 9 * * *' # 매일 아침 9시(UTC 기준)에 자동 실행
+#    - cron: '0 9 * * *' # 매일 아침 9시(UTC 기준)에 자동 실행
   workflow_dispatch: # 원할 때 버튼 눌러서 수동 실행 가능
 
 jobs:
