@@ -28,6 +28,6 @@ jobs:
       - name: Run Auto Blogger Bot
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          BLOG_ID: ${{ secrets.BLOGGER_ID }}
+          BLOGGER_ID: ${{ secrets.BLOGGER_ID }}
           BLOGGER_TOKEN: ${{ secrets.BLOGGER_TOKEN }}
         run: python bot.py
