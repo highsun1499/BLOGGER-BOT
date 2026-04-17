@@ -21,10 +21,10 @@ def get_blogger_service():
     return build('blogger', 'v3', credentials=creds)
 
 def get_last_posted_nvidia_url(service):
-    """블로그에서 가장 최근에 쓴 글 1개를 가져와 출처(NVIDIA URL)를 찾습니다."""
+    """블로그에서 가장 최근에 쓴 글을 가져와 출처(NVIDIA URL)를 찾습니다."""
     try:
-        # 내 블로그의 가장 최근 게시물 1개만 가져옴
-        posts = service.posts().list(blogId=BLOGGER_ID, maxResults=1).execute()
+        # 내 블로그의 가장 최근 게시물을 가져옴
+        posts = service.posts().list(blogId=BLOGGER_ID, maxResults=9876543210).execute()
         items = posts.get('items',[])
         
         if not items:
