@@ -1,29 +1,33 @@
-name: Gemini Blogger Bot
+name: BLOGGER-BOT
 
 on:
   schedule:
-#    - cron: '0 9 * * *' # 매일 아침 9시(UTC 기준)에 자동 실행
-  workflow_dispatch: # 원할 때 버튼 눌러서 수동 실행 가능
+    # 매일 한국 시간 기준 오후 1시 (UTC 기준 오전 4시) 실행
+    - cron: '0 4 * * *'
+  # GitHub Actions 탭에서 수동으로도 실행 가능하게 설정
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/checkout@v3
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
       - name: Install dependencies
         run: |
-          pip install google-api-python-client google-auth-oauthlib google-auth-httplib2 google-generativeai
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      - name: Run Bot
+      - name: Run Auto Blogger Bot
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          CLIENT_SECRET_JSON: ${{ secrets.CLIENT_SECRET_JSON }}
           BLOG_ID: ${{ secrets.BLOG_ID }}
+          BLOGGER_TOKEN: ${{ secrets.BLOGGER_TOKEN }}
         run: python bot.py
