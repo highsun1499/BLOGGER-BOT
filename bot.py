@@ -14,7 +14,7 @@ BLOGGER_TOKEN = os.environ.get("BLOGGER_TOKEN")
 
 # Gemini API 설정
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemma-4-31b')
+model = genai.GenerativeModel('gemma-4-31b-it')
 
 def get_blogger_service():
     token_dict = json.loads(BLOGGER_TOKEN)
