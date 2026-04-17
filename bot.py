@@ -9,15 +9,15 @@ from googleapiclient.discovery import build
 
 # 환경 변수에서 값 가져오기
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-BLOG_ID = os.environ.get("BLOGGER_ID")
-BLOGGER_TOKEN_JSON = os.environ.get("BLOGGER_TOKEN")
+BLOGGER_ID = os.environ.get("BLOGGER_ID")
+BLOGGER_TOKEN = os.environ.get("BLOGGER_TOKEN")
 
 # Gemini API 설정
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemma-4-31b')
 
 def get_blogger_service():
-    token_dict = json.loads(BLOGGER_TOKEN_JSON)
+    token_dict = json.loads(BLOGGER_TOKEN)
     creds = Credentials.from_authorized_user_info(token_dict)
     return build('blogger', 'v3', credentials=creds)
 
@@ -25,7 +25,7 @@ def get_last_posted_nvidia_url(service):
     """블로그에서 가장 최근에 쓴 글 1개를 가져와 원본 출처(NVIDIA URL)를 찾습니다."""
     try:
         # 내 블로그의 가장 최근 게시물 1개만 가져옴
-        posts = service.posts().list(blogId=BLOG_ID, maxResults=1).execute()
+        posts = service.posts().list(blogId=BLOGGER_ID, maxResults=1).execute()
         items = posts.get('items',[])
         
         if not items:
@@ -172,7 +172,7 @@ def post_to_blogger(service, title, content):
         "content": content
     }
     
-    result = service.posts().insert(blogId=BLOG_ID, body=body, isDraft=False).execute()
+    result = service.posts().insert(blogId=BLOGGER_ID, body=body, isDraft=False).execute()
     print(f"✅ 블로그 포스팅 성공: {result.get('url')}")
 
 def main():
