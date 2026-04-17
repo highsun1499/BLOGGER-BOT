@@ -33,7 +33,7 @@ def get_last_posted_nvidia_url(service):
         latest_post_content = items[0].get('content', '')
         
         # HTML 태그 변형을 고려한 정규표현식으로 URL 추출 (큰따옴표, 작은따옴표 모두 대응)
-        match = re.search(r"<strong>🔗 원본 출처:</strong> <a href=['\"](.*?)['\"]", latest_post_content)
+        match = re.search(r"<strong>🔗 출처:</strong> <a href=['\"](.*?)['\"]", latest_post_content)
         if match:
             return match.group(1)
             
