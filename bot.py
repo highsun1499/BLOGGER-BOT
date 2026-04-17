@@ -9,12 +9,12 @@ from googleapiclient.discovery import build
 
 # 환경 변수에서 값 가져오기
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-BLOG_ID = os.environ.get("BLOG_ID")
+BLOG_ID = os.environ.get("BLOGGER_ID")
 BLOGGER_TOKEN_JSON = os.environ.get("BLOGGER_TOKEN")
 
 # Gemini API 설정
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash') # 빠르고 텍스트 생성에 우수한 1.5 flash 모델
+model = genai.GenerativeModel('gemma-4-31b')
 
 def get_blogger_service():
     """Blogger API 서비스 객체 생성"""
