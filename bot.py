@@ -23,8 +23,8 @@ def get_blogger_service():
 def get_last_posted_nvidia_url(service):
     """블로그에서 가장 최근에 쓴 글을 가져와 출처(NVIDIA URL)를 찾습니다."""
     try:
-        # 내 블로그의 가장 최근 게시물을 가져옴
-        posts = service.posts().list(blogId=BLOGGER_ID, maxResults=9876543210).execute()
+        # 🚨 수정사항 1 : maxResults는 반드시 1이어야 합니다! (가장 최신 글 1개만 확인하면 됨)
+        posts = service.posts().list(blogId=BLOGGER_ID, maxResults=1).execute()
         items = posts.get('items',[])
         
         if not items:
@@ -32,8 +32,8 @@ def get_last_posted_nvidia_url(service):
             
         latest_post_content = items[0].get('content', '')
         
-        # HTML 태그 변형을 고려한 정규표현식으로 URL 추출 (큰따옴표, 작은따옴표 모두 대응)
-        match = re.search(r"<strong>🔗 출처:</strong> <a href=['\"](.*?)['\"]", latest_post_content)
+        # 🚨 수정사항 2 : 구글 블로거가 태그 순서를 바꿔도 무조건 찾아내는 강력한 '유연한 정규식' 도입
+        match = re.search(r"🔗 출처:.*?href=['\"](.*?)['\"]", latest_post_content, re.IGNORECASE | re.DOTALL)
         if match:
             return match.group(1)
             
@@ -41,7 +41,7 @@ def get_last_posted_nvidia_url(service):
         print(f"최근 블로그 글 가져오기 에러: {e}")
     return None
 
-def get_target_nvidia_urls(last_url, max_urls=9876543210):
+def get_target_nvidia_urls(last_url, max_urls=1):
     """사이트맵을 예전 순(1, 2, 3...)으로 탐색하여 새로 작성할 URL 목록을 가져옵니다."""
     headers = {'User-Agent': 'Mozilla/5.0'}
     index_url = "https://blogs.nvidia.com/sitemap_index.xml"
@@ -50,7 +50,6 @@ def get_target_nvidia_urls(last_url, max_urls=9876543210):
     
     sitemaps =[loc.text for loc in soup.find_all('loc') if 'post-sitemap' in loc.text]
     
-    # post-sitemap 숫자순으로 오름차순 정렬 (post-sitemap.xml -> 1, post-sitemap2.xml -> 2)
     def extract_sitemap_number(url):
         match = re.search(r'post-sitemap(\d*)\.xml', url)
         if match:
@@ -61,7 +60,6 @@ def get_target_nvidia_urls(last_url, max_urls=9876543210):
     sorted_sitemaps = sorted(sitemaps, key=extract_sitemap_number, reverse=False)
     
     target_urls =[]
-    # last_url이 없으면(최초 실행) 처음부터 바로 긁어오기 시작
     found_last = False if last_url else True 
     
     for sitemap in sorted_sitemaps:
@@ -72,20 +70,18 @@ def get_target_nvidia_urls(last_url, max_urls=9876543210):
         res_site = requests.get(sitemap, headers=headers)
         soup_site = BeautifulSoup(res_site.content, 'xml')
         
-        # 예전 글부터 순방향으로 가져와야 하므로 reversed() 없이 그대로 가져옴
         urls =[loc.text for loc in soup_site.find_all('loc') if '/blog/' in loc.text]
         
         for url in urls:
-            if len(target_urls) >= max_urls: # 목표치(3개)를 채웠으면 멈춤
+            if len(target_urls) >= max_urls: 
                 break
                 
             if not found_last:
-                # 사이트맵을 훑다가, 지난번에 마지막으로 쓴 URL을 발견하면!
-                if url == last_url:
-                    found_last = True # 그 다음 URL부터 수집하도록 스위치 ON
+                # 🚨 수정사항 3 : url 끝에 슬래시('/') 유무 때문에 불일치하는 것을 막기 위한 안전장치 (rstrip)
+                if url.rstrip('/') == last_url.rstrip('/'):
+                    found_last = True # 다음 URL부터 수집하도록 스위치 ON
                 continue
             
-            # 스위치가 ON 상태라면 수집 목록에 추가
             target_urls.append(url)
             
     return target_urls
