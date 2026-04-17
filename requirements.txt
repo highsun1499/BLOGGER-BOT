@@ -1,6 +1,6 @@
 requests
 beautifulsoup4
 lxml
-google-generativeai
+google-genai              # <- 이 부분 수정 (기존: google-generativeai)
 google-api-python-client
 google-auth-oauthlib
