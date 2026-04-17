@@ -166,16 +166,35 @@ def generate_blog_post_with_gemini(original_text, url):
     content_with_link = f"{content}<br><br><hr><br><strong>🔗 출처:</strong> <a href='{url}' target='_blank'>{url}</a>"
     return title, content_with_link
 
-def post_to_blogger(service, title, content):
-    """가공된 글을 블로거에 업로드합니다."""
-    body = {
-        "kind": "blogger#post",
-        "title": title,
-        "content": content
-    }
-    
-    result = service.posts().insert(blogId=BLOGGER_ID, body=body, isDraft=False).execute()
-    print(f"✅ 블로그 포스팅 성공: {result.get('url')}")
+def post_to_blogger(service, title, content, original_url):
+    """가공된 글을 블로거에 업로드하며, 주소(URL)를 원본 슬러그와 일치시킵니다."""
+    try:
+        # 1. 원본 URL에서 맨 뒤의 영문 슬러그만 추출
+        # 예: https://blogs.nvidia.com/blog/what-is-nvlink/ -> what-is-nvlink
+        slug = original_url.strip('/').split('/')[-1]
+        
+        # 블로거가 '-'를 인식해 주소를 예쁘게 만들도록 빈칸으로 변경 ('what is nvlink')
+        temp_title = slug.replace('-', ' ')
+        
+        # 2. 임시 영문 제목으로 포스트 1차 발행 (이 순간 주소가 확정 조각됨!)
+        body = {
+            "kind": "blogger#post",
+            "title": temp_title,
+            "content": content
+        }
+        inserted_post = service.posts().insert(blogId=BLOGGER_ID, body=body, isDraft=False).execute()
+        post_id = inserted_post.get('id')
+        
+        # 3. 주소가 고정되었으므로, 원래의 '진짜 한국어 제목'으로 업데이트(patch)
+        update_body = {
+            "title": title
+        }
+        result = service.posts().patch(blogId=BLOGGER_ID, postId=post_id, body=update_body).execute()
+        
+        print(f"✅ 블로그 포스팅 성공: {result.get('url')}")
+        
+    except Exception as e:
+        print(f"❌ 포스팅 중 에러 발생: {e}")
 
 def main():
     service = get_blogger_service()
@@ -214,7 +233,7 @@ def main():
         print(f"생성된 제목: {title}")
         
         print("Blogger에 포스팅 중...")
-        post_to_blogger(service, title, new_content)
+        post_to_blogger(service, title, new_content, url)
 
 if __name__ == "__main__":
     main()
