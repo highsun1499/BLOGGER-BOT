@@ -162,7 +162,7 @@ def generate_blog_post_with_gemini(original_text, url):
     lines = response.text.strip().split('\n')
     title = lines[0].replace('#', '').strip()
     content = '\n'.join(lines[1:]).strip()
-    
+    content = content.replace('$\\rightarrow$', '→').replace('$\rightarrow$', '→')
     content_with_link = f"{content}<br><br><hr><br><strong>🔗 출처:</strong> <a href='{url}' target='_blank'>{url}</a>"
     return title, content_with_link
 
