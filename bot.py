@@ -17,45 +17,79 @@ genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemma-4-31b')
 
 def get_blogger_service():
-    """Blogger API 서비스 객체 생성"""
     token_dict = json.loads(BLOGGER_TOKEN_JSON)
     creds = Credentials.from_authorized_user_info(token_dict)
-    service = build('blogger', 'v3', credentials=creds)
-    return service
+    return build('blogger', 'v3', credentials=creds)
 
-def get_latest_nvidia_urls(max_urls=3):
-    """NVIDIA 사이트맵에서 가장 최근 포스트 URL들을 가져옵니다."""
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-    
-    # 1. 사이트맵 인덱스 가져오기
+def get_last_posted_nvidia_url(service):
+    """블로그에서 가장 최근에 쓴 글 1개를 가져와 원본 출처(NVIDIA URL)를 찾습니다."""
+    try:
+        # 내 블로그의 가장 최근 게시물 1개만 가져옴
+        posts = service.posts().list(blogId=BLOG_ID, maxResults=1).execute()
+        items = posts.get('items',[])
+        
+        if not items:
+            return None # 블로그에 글이 아예 하나도 없는 최초 상태
+            
+        latest_post_content = items[0].get('content', '')
+        
+        # HTML 태그 변형을 고려한 정규표현식으로 URL 추출 (큰따옴표, 작은따옴표 모두 대응)
+        match = re.search(r"<strong>🔗 원본 출처:</strong> <a href=['\"](.*?)['\"]", latest_post_content)
+        if match:
+            return match.group(1)
+            
+    except Exception as e:
+        print(f"최근 블로그 글 가져오기 에러: {e}")
+    return None
+
+def get_target_nvidia_urls(last_url, max_urls=3):
+    """사이트맵을 예전 순(1, 2, 3...)으로 탐색하여 새로 작성할 URL 목록을 가져옵니다."""
+    headers = {'User-Agent': 'Mozilla/5.0'}
     index_url = "https://blogs.nvidia.com/sitemap_index.xml"
     res = requests.get(index_url, headers=headers)
     soup = BeautifulSoup(res.content, 'xml')
     
-    # post-sitemap이 들어간 최신 사이트맵 URL 찾기 (보통 숫자가 젤 큰 것이 최신)
     sitemaps =[loc.text for loc in soup.find_all('loc') if 'post-sitemap' in loc.text]
-    latest_sitemap = sorted(sitemaps, reverse=True)[0]
     
-    # 2. 최신 사이트맵에서 포스트 URL 가져오기
-    res_site = requests.get(latest_sitemap, headers=headers)
-    soup_site = BeautifulSoup(res_site.content, 'xml')
+    # post-sitemap 숫자순으로 오름차순 정렬 (post-sitemap.xml -> 1, post-sitemap2.xml -> 2)
+    def extract_sitemap_number(url):
+        match = re.search(r'post-sitemap(\d*)\.xml', url)
+        if match:
+            num = match.group(1)
+            return int(num) if num else 1
+        return 1 
     
-    post_urls =[loc.text for loc in soup_site.find_all('loc')]
+    sorted_sitemaps = sorted(sitemaps, key=extract_sitemap_number, reverse=False)
     
-    # 사이트맵은 보통 최신 글이 맨 아래에 있거나 마지막 `<loc>`에 추가됨
-    # 혹시 모르니 가장 마지막 5개를 뒤집어서 최신순으로 가져옴
-    return list(reversed(post_urls))[:max_urls]
-
-def is_duplicate(service, url):
-    """최근 블로거 포스트 10개를 검색하여 해당 URL이 이미 포스팅 되었는지 확인 (중복 체크)"""
-    try:
-        posts = service.posts().list(blogId=BLOG_ID, maxResults=10).execute()
-        for post in posts.get('items',[]):
-            if url in post.get('content', ''):
-                return True
-    except Exception as e:
-        print(f"중복 체크 중 에러 발생: {e}")
-    return False
+    target_urls =[]
+    # last_url이 없으면(최초 실행) 처음부터 바로 긁어오기 시작
+    found_last = False if last_url else True 
+    
+    for sitemap in sorted_sitemaps:
+        if len(target_urls) >= max_urls:
+            break
+            
+        print(f"📄 사이트맵 탐색 중: {sitemap}")
+        res_site = requests.get(sitemap, headers=headers)
+        soup_site = BeautifulSoup(res_site.content, 'xml')
+        
+        # 예전 글부터 순방향으로 가져와야 하므로 reversed() 없이 그대로 가져옴
+        urls =[loc.text for loc in soup_site.find_all('loc') if '/blog/' in loc.text]
+        
+        for url in urls:
+            if len(target_urls) >= max_urls: # 목표치(3개)를 채웠으면 멈춤
+                break
+                
+            if not found_last:
+                # 사이트맵을 훑다가, 지난번에 마지막으로 쓴 URL을 발견하면!
+                if url == last_url:
+                    found_last = True # 그 다음 URL부터 수집하도록 스위치 ON
+                continue
+            
+            # 스위치가 ON 상태라면 수집 목록에 추가
+            target_urls.append(url)
+            
+    return target_urls
 
 def scrape_nvidia_post(url):
     """NVIDIA 블로그 글의 텍스트 본문을 스크래핑합니다."""
@@ -63,14 +97,12 @@ def scrape_nvidia_post(url):
     res = requests.get(url, headers=headers)
     soup = BeautifulSoup(res.content, 'html.parser')
     
-    # 본문이 들어있는 주요 태그 찾기 (엔비디아 블로그 구조에 맞춤)
     article_content = soup.find('article')
     if not article_content:
         return ""
     
     paragraphs = article_content.find_all('p')
-    text = "\n".join([p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True)])
-    return text
+    return "\n".join([p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True)])
 
 def generate_blog_post_with_gemini(original_text, url):
     """Gemini API를 활용해 블로그 콘텐츠를 재가공합니다."""
@@ -79,13 +111,13 @@ def generate_blog_post_with_gemini(original_text, url):
     아래 제공된 '엔비디아 블로그 원문(영어)'을 읽고, 다음의 조건들에 맞추어 한국어로 블로그 글을 작성해주세요.
 
     [조건]
-    1. 글 길이는 **최소 2000자에서 최대 3000자** 사이를 엄격하게 지켜주세요. 상세하게 분석 내용을 덧붙여도 좋습니다.
+    1. 글 길이는 **최소 2000자에서 최대 3000자** 사이를 엄격하게 지켜주세요.
     2. 한국 주식 투자자들이 매력을 느끼고 관심 가져할 만한 포인트(예: 수혜주 예측, AI 시장 전망, 주가에 미치는 영향 등)를 추가해서 요약 및 분석해주세요.
     3. 첫 번째 줄에는 반드시 블로그 포스팅의 '가장 매력적이고 어그로를 끌 수 있는 제목'을 적어주세요. (제목: 이라는 단어는 빼고 작성)
     4. 두 번째 줄부터 본문을 작성하며, 가독성을 위해 적절한 HTML 태그 (<h2>, <b>, <br> 등)를 섞어서 문단을 나눠주세요.
 
     [원문 내용]
-    {original_text[:25000]} # 너무 길어 토큰을 초과하는 것을 방지
+    {original_text[:25000]}
     """
     
     response = model.generate_content(prompt)
@@ -93,12 +125,10 @@ def generate_blog_post_with_gemini(original_text, url):
         return None, None
         
     lines = response.text.strip().split('\n')
-    title = lines[0].replace('#', '').strip() # 첫 줄은 제목
-    content = '\n'.join(lines[1:]).strip() # 나머지는 본문
+    title = lines[0].replace('#', '').strip()
+    content = '\n'.join(lines[1:]).strip()
     
-    # 맨 아래에 원본 링크 추가
     content_with_link = f"{content}<br><br><hr><br><strong>🔗 원본 출처:</strong> <a href='{url}' target='_blank'>{url}</a>"
-    
     return title, content_with_link
 
 def post_to_blogger(service, title, content):
@@ -115,24 +145,31 @@ def post_to_blogger(service, title, content):
 def main():
     service = get_blogger_service()
     
-    print("1. 최신 NVIDIA 블로그 URL 수집 중...")
-    latest_urls = get_latest_nvidia_urls(max_urls=3)
+    print("1. 내 블로그에서 마지막으로 작성한 원본 링크 확인 중...")
+    last_url = get_last_posted_nvidia_url(service)
     
-    for url in latest_urls:
-        print(f"\n확인 중인 URL: {url}")
+    if last_url:
+        print(f"🎯 마지막으로 포스팅한 URL: {last_url}")
+    else:
+        print("💡 블로그에 작성된 포스트가 감지되지 않아 가장 오래된 첫 번째 글부터 시작합니다.")
         
-        # 중복 체크
-        if is_duplicate(service, url):
-            print("⚠️ 이미 블로그에 작성된 원본 링크입니다. 포스팅을 건너뜁니다.")
-            continue
+    print("\n2. 사이트맵에서 새로 포스팅할 타겟 URL 수집 중...")
+    target_urls = get_target_nvidia_urls(last_url, max_urls=3) # 하루에 3개 작성
+    
+    if not target_urls:
+        print("더 이상 포스팅할 새로운 글이 존재하지 않습니다.")
+        return
+        
+    for url in target_urls:
+        print(f"\n--- 🚀 다음 URL 진행 중: {url} ---")
             
-        print("2. 글 스크래핑 중...")
+        print("글 스크래핑 중...")
         text = scrape_nvidia_post(url)
         if not text:
             print("텍스트를 불러오지 못했습니다. 건너뜁니다.")
             continue
             
-        print("3. Gemini API로 글 작성 중...")
+        print("Gemini API로 분석 및 글 작성 중...")
         title, new_content = generate_blog_post_with_gemini(text, url)
         
         if not title or not new_content:
@@ -141,12 +178,8 @@ def main():
             
         print(f"생성된 제목: {title}")
         
-        print("4. Blogger에 포스팅 중...")
+        print("Blogger에 포스팅 중...")
         post_to_blogger(service, title, new_content)
-        
-        # 한 번 실행에 하나씩만 올리고 싶다면 여기서 break 처리.
-        # 여러 개가 안 올라가 있었다면 전부 올리려면 break 삭제
-        break 
 
 if __name__ == "__main__":
     main()
