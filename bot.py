@@ -41,7 +41,7 @@ def get_last_posted_nvidia_url(service):
         print(f"최근 블로그 글 가져오기 에러: {e}")
     return None
 
-def get_target_nvidia_urls(last_url, max_urls=3):
+def get_target_nvidia_urls(last_url, max_urls=9876543210):
     """사이트맵을 예전 순(1, 2, 3...)으로 탐색하여 새로 작성할 URL 목록을 가져옵니다."""
     headers = {'User-Agent': 'Mozilla/5.0'}
     index_url = "https://blogs.nvidia.com/sitemap_index.xml"
