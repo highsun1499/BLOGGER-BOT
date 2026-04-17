@@ -3,7 +3,7 @@ import re
 import json
 import requests
 from bs4 import BeautifulSoup
-import google.generativeai as genai
+from google import genai
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
@@ -13,8 +13,7 @@ BLOGGER_ID = os.environ.get("BLOGGER_ID")
 BLOGGER_TOKEN = os.environ.get("BLOGGER_TOKEN")
 
 # Gemini API 설정
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemma-4-31b-it')
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 def get_blogger_service():
     token_dict = json.loads(BLOGGER_TOKEN)
@@ -153,7 +152,11 @@ def generate_blog_post_with_gemini(original_text, url):
     {original_text[:9876543210]}
     """
     
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(
+        model='gemma-4-31b-it', # 사용할 모델 이름 여기에 입력
+        contents=prompt
+    )
+    
     if not response.text:
         return None, None
         
