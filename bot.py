@@ -21,7 +21,7 @@ def get_blogger_service():
     return build('blogger', 'v3', credentials=creds)
 
 def get_last_posted_nvidia_url(service):
-    """블로그에서 가장 최근에 쓴 글 1개를 가져와 원본 출처(NVIDIA URL)를 찾습니다."""
+    """블로그에서 가장 최근에 쓴 글 1개를 가져와 출처(NVIDIA URL)를 찾습니다."""
     try:
         # 내 블로그의 가장 최근 게시물 1개만 가져옴
         posts = service.posts().list(blogId=BLOGGER_ID, maxResults=1).execute()
@@ -163,7 +163,7 @@ def generate_blog_post_with_gemini(original_text, url):
     title = lines[0].replace('#', '').strip()
     content = '\n'.join(lines[1:]).strip()
     
-    content_with_link = f"{content}<br><br><hr><br><strong>🔗 원본 출처:</strong> <a href='{url}' target='_blank'>{url}</a>"
+    content_with_link = f"{content}<br><br><hr><br><strong>🔗 출처:</strong> <a href='{url}' target='_blank'>{url}</a>"
     return title, content_with_link
 
 def post_to_blogger(service, title, content):
