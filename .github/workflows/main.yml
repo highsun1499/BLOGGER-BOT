@@ -2,9 +2,7 @@ name: BLOGGER-BOT
 
 on:
   schedule:
-    # 매일 한국 시간 기준 오후 1시 (UTC 기준 오전 4시) 실행
-    - cron: '0 4 * * *'
-  # GitHub Actions 탭에서 수동으로도 실행 가능하게 설정
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 jobs:
