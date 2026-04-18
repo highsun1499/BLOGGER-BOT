@@ -173,6 +173,8 @@ def post_to_blogger(service, title, content, original_url):
             "kind": "blogger#post",
             "title": temp_title,
             "content": content
+            "labels":["엔비디아"]    # 👈 🔥 이 줄을 추가하세요! (원하는 태그 입력)
+
         }
         inserted_post = service.posts().insert(blogId=BLOGGER_ID, body=body, isDraft=True).execute()
         post_id = inserted_post.get('id')
