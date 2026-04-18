@@ -23,9 +23,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Auto Blogger Bot
+      - name: Run bot_nvidia
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           BLOGGER_ID: ${{ secrets.BLOGGER_ID }}
           BLOGGER_TOKEN: ${{ secrets.BLOGGER_TOKEN }}
-        run: python bot.py
+        run: bot_nvidia.py
