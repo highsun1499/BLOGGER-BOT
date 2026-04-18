@@ -202,6 +202,71 @@ def post_to_blogger(service, title, content, original_url):
         service.posts().delete(blogId=BLOGGER_ID, postId=post_id).execute()
         print("➡️ 글이 삭제되었으므로 내일 다시 이 글부터 포스팅을 재도전합니다.")
 
+def get_all_posted_urls(service):
+    """[신규] 블로그에 이미 작성된 모든 포스팅의 원본 URL들을 긁어모아 '집합(Set)'으로 만듭니다."""
+    print("🔍[Sweep 모드] 블로그 내 전체 게시글을 조회하여 누락된 글을 찾습니다...")
+    posted_urls = set()
+    next_page_token = None
+    
+    while True:
+        try:
+            # 🚨 타겟 라벨("엔비디아")이 달린 글만 싹 다 훑어옵니다.
+            request = service.posts().list(blogId=BLOGGER_ID, maxResults=9876543210, labels="엔비디아", pageToken=next_page_token)
+            res = request.execute()
+            
+            for item in res.get('items',[]):
+                match = re.search(r"🔗 출처:.*?href=['\"](.*?)['\"]", item.get('content', ''), re.IGNORECASE | re.DOTALL)
+                if match:
+                    posted_urls.add(match.group(1).rstrip('/'))
+                    
+            next_page_token = res.get('nextPageToken')
+            if not next_page_token:
+                break
+        except Exception as e:
+            print(f"전체 목록 조회 중 에러: {e}")
+            break
+            
+    print(f"✅ 총 {len(posted_urls)}개의 정상 발행된 문서 링크 목록을 확보했습니다.")
+    return posted_urls
+
+def get_missing_target_urls(posted_urls, max_urls=9876543210):
+    """[신규] 사이트맵을 처음부터 점검하며, 블로그에 아직 없는 URL만 골라옵니다."""
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    index_url = "https://blogs.nvidia.com/sitemap_index.xml"
+    res = requests.get(index_url, headers=headers)
+    soup = BeautifulSoup(res.content, 'xml')
+    
+    sitemaps =[loc.text for loc in soup.find_all('loc') if 'post-sitemap' in loc.text]
+    
+    def extract_sitemap_number(url):
+        match = re.search(r'post-sitemap(\d*)\.xml', url)
+        if match:
+            num = match.group(1)
+            return int(num) if num else 1
+        return 1 
+        
+    sorted_sitemaps = sorted(sitemaps, key=extract_sitemap_number, reverse=False)
+    target_urls =[]
+    
+    for sitemap in sorted_sitemaps:
+        if len(target_urls) >= max_urls:
+            break
+            
+        res_site = requests.get(sitemap, headers=headers)
+        soup_site = BeautifulSoup(res_site.content, 'xml')
+        urls =[loc.text for loc in soup_site.find_all('loc') if '/blog/' in loc.text]
+        
+        for url in urls:
+            if len(target_urls) >= max_urls:
+                break
+            
+            clean_url = url.rstrip('/')
+            # 블로그(posted_urls)에 없는 링크라면 타겟으로 포획!
+            if clean_url not in posted_urls:
+                target_urls.append(url)
+                
+    return target_urls
+
 def main():
     service = get_blogger_service()
     
@@ -211,22 +276,31 @@ def main():
     if last_url:
         print(f"🎯 마지막으로 포스팅한 URL: {last_url}")
     else:
-        print("💡 블로그에 작성된 포스트가 감지되지 않아 가장 오래된 첫 번째 글부터 시작합니다.")
+        print("💡 블로그에 작성된 포스트가 없거나 파악되지 않아 1번째 글부터 시작합니다.")
         
     print("\n2. 사이트맵에서 새로 포스팅할 타겟 URL 수집 중...")
-    # 🚨 고장 난 링크가 연속 2~3개 있을 것을 대비해 넉넉하게 10개를 긁어옵니다.
-    target_urls = get_target_nvidia_urls(last_url, max_urls=10) 
+    target_urls = get_target_nvidia_urls(last_url, max_urls=9876543210) 
     
+    # 🌟 [여기서부터 새로 추가된 핵심 로직입니다] 🌟
     if not target_urls:
-        print("더 이상 포스팅할 새로운 글이 존재하지 않습니다.")
-        return
+        print("💡 앞방향으로 새로 쓸 글이 없습니다. 최신 글 끝까지 도달했습니다!")
+        print("🔄 [전체 누락 점검 모드] 역주행을 가동하여 빠진 구멍을 찾아냅니다.")
         
-    posted_count = 0 # 🚨 성공적으로 글을 쓴 횟수 카운터
+        # 블로그에 있는 수천 개의 글 주소를 순식간에 다 불러옴 (API 1~2번 소모로 매우 빠름)
+        posted_urls = get_all_posted_urls(service)
+        # 처음부터 훑으면서 블로그에 없는 글만 넉넉히(15개) 가져옴
+        target_urls = get_missing_target_urls(posted_urls, max_urls=9876543210) 
+        
+        if not target_urls:
+            print("🏁 더 이상 포스팅할 빈 구멍도 없습니다! 완벽하게 모든 글이 동기화되었습니다.")
+            return
+
+    # 🌟 [동일 유지] 아래부터는 기존 포스팅 로직과 동일 🌟
+    posted_count = 0 
     
     for url in target_urls:
-        # 하루에 딱 1개 포스팅에 성공했다면 반복문을 그만두고 퇴근합니다!
-        if posted_count >= 1: 
-            print("✅ 일일 목표 포스팅 개수를 달성하여 봇을 종료합니다.")
+        if posted_count >= 1: # 하루 목표치 달성 시 퇴근
+            print("✅ 일일 목표 포스팅 1개 작성을 달성하여 봇을 종료합니다.")
             break
             
         print(f"\n--- 🚀 다음 URL 진행 중: {url} ---")
@@ -234,7 +308,6 @@ def main():
         print("글 스크래핑 중...")
         text = scrape_nvidia_post(url)
         if not text:
-            # 빈칸이 돌아왔다면 불량 링크이므로, 에러를 내지 않고 'continue'로 쿨하게 다음 주소를 시도합니다.
             print("➡️ 텍스트를 불러오지 못했습니다. 불량 링크로 간주하고 다음 글로 넘어갑니다.")
             continue
             
@@ -250,7 +323,6 @@ def main():
         print("Blogger에 포스팅 중...")
         post_to_blogger(service, title, new_content, url)
         
-        # 여기까지 도달했다면 무사히 글을 올린 것이므로 카운터를 1 올려줍니다.
         posted_count += 1 
 
 if __name__ == "__main__":
