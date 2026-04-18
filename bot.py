@@ -87,17 +87,26 @@ def get_target_nvidia_urls(last_url, max_urls=1):
     return target_urls
 
 def scrape_nvidia_post(url):
-    """NVIDIA 블로그 글의 텍스트 본문을 스크래핑합니다."""
+    """NVIDIA 블로그 글의 텍스트 본문을 스크래핑합니다. (죽은 링크 방어막 적용)"""
     headers = {'User-Agent': 'Mozilla/5.0'}
-    res = requests.get(url, headers=headers)
-    soup = BeautifulSoup(res.content, 'html.parser')
-    
-    article_content = soup.find('article')
-    if not article_content:
+    try:
+        # timeout=10 을 추가하여 10초 이상 응답이 없으면 포기합니다.
+        res = requests.get(url, headers=headers, timeout=10)
+        res.raise_for_status() # 404(페이지 없음)나 500 에러를 잡기 위한 방어막
+        
+        soup = BeautifulSoup(res.content, 'html.parser')
+        
+        article_content = soup.find('article')
+        if not article_content:
+            return ""
+        
+        paragraphs = article_content.find_all('p')
+        return "\n".join([p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True)])
+        
+    except Exception as e:
+        # 에러가 발생해도 봇이 죽지 않고 빈칸("")을 반환해 자연스럽게 넘어가도록 함
+        print(f"⚠️ 불량 링크 감지 (원문 스크래핑 실패): {e}")
         return ""
-    
-    paragraphs = article_content.find_all('p')
-    return "\n".join([p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True)])
 
 def generate_blog_post_with_gemini(original_text, url):
     """Gemini API를 활용해 블로그 콘텐츠를 재가공합니다."""
@@ -205,32 +214,44 @@ def main():
         print("💡 블로그에 작성된 포스트가 감지되지 않아 가장 오래된 첫 번째 글부터 시작합니다.")
         
     print("\n2. 사이트맵에서 새로 포스팅할 타겟 URL 수집 중...")
-    target_urls = get_target_nvidia_urls(last_url, max_urls=1) # 하루에 1개 작성
+    # 🚨 고장 난 링크가 연속 2~3개 있을 것을 대비해 넉넉하게 10개를 긁어옵니다.
+    target_urls = get_target_nvidia_urls(last_url, max_urls=10) 
     
     if not target_urls:
         print("더 이상 포스팅할 새로운 글이 존재하지 않습니다.")
         return
         
+    posted_count = 0 # 🚨 성공적으로 글을 쓴 횟수 카운터
+    
     for url in target_urls:
+        # 하루에 딱 1개 포스팅에 성공했다면 반복문을 그만두고 퇴근합니다!
+        if posted_count >= 1: 
+            print("✅ 일일 목표 포스팅 개수를 달성하여 봇을 종료합니다.")
+            break
+            
         print(f"\n--- 🚀 다음 URL 진행 중: {url} ---")
             
         print("글 스크래핑 중...")
         text = scrape_nvidia_post(url)
         if not text:
-            print("텍스트를 불러오지 못했습니다. 건너뜁니다.")
+            # 빈칸이 돌아왔다면 불량 링크이므로, 에러를 내지 않고 'continue'로 쿨하게 다음 주소를 시도합니다.
+            print("➡️ 텍스트를 불러오지 못했습니다. 불량 링크로 간주하고 다음 글로 넘어갑니다.")
             continue
             
         print("Gemini API로 분석 및 글 작성 중...")
         title, new_content = generate_blog_post_with_gemini(text, url)
         
         if not title or not new_content:
-            print("Gemini 글 생성 실패. 건너뜁니다.")
+            print("➡️ Gemini 글 생성 실패. 다음 글로 넘어갑니다.")
             continue
             
         print(f"생성된 제목: {title}")
         
         print("Blogger에 포스팅 중...")
         post_to_blogger(service, title, new_content, url)
+        
+        # 여기까지 도달했다면 무사히 글을 올린 것이므로 카운터를 1 올려줍니다.
+        posted_count += 1 
 
 if __name__ == "__main__":
     main()
