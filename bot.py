@@ -172,35 +172,39 @@ def generate_blog_post_with_gemini(original_text, url):
     return title, content_with_link
 
 def post_to_blogger(service, title, content, original_url):
-    """가공된 글을 블로거에 업로드하며, 주소(URL)를 원본과 일치시키고 실패 시 라이브 방지 로직을 추가합니다."""
+    """가공된 글을 블로거에 업로드하며, 주소(URL)를 원본과 완벽히 일치시킵니다."""
     try:
         slug = original_url.strip('/').split('/')[-1]
         temp_title = slug.replace('-', ' ')
         
-        # 1. 🚨 임시 영문 제목으로는 무조건 '초안(isDraft=True)' 비공개 상태로 먼저 발행합니다.
+        # 1. 🚨 주소를 영구 고정하려면 무조건 '공개(isDraft=False)' 상태로 최초 발행해야 합니다!
         body = {
             "kind": "blogger#post",
             "title": temp_title,
             "content": content,
-            "labels":["엔비디아"]    # 👈 🔥 이 줄을 추가하세요! (원하는 태그 입력)
-
+            "labels":["엔비디아"] 
         }
-        inserted_post = service.posts().insert(blogId=BLOGGER_ID, body=body, isDraft=True).execute()
+        inserted_post = service.posts().insert(blogId=BLOGGER_ID, body=body, isDraft=False).execute()
         post_id = inserted_post.get('id')
         
-        # 2. 주소가 고정되었으니, 진짜 제미니 한국어 제목으로 업데이트(patch)를 시도합니다.
+    except Exception as e:
+        print(f"❌ 임시 발행 중 에러 발생: {e}")
+        return # 발행 자체가 실패했으므로 여기서 함수 종료
+
+    try:
+        # 2. 발행이 완료되어 주소가 고정되었으니, 제미니의 진짜 한국어 제목으로 업데이트(patch)를 시도합니다.
         update_body = {
             "title": title
         }
-        service.posts().patch(blogId=BLOGGER_ID, postId=post_id, body=update_body).execute()
+        result = service.posts().patch(blogId=BLOGGER_ID, postId=post_id, body=update_body).execute()
         
-        # 3. 🚨 업데이트까지 완벽하게 에러 없이 끝났다면, 그제서야 대중에게 '공개(Publish)' 합니다!
-        result = service.posts().publish(blogId=BLOGGER_ID, postId=post_id).execute()
-        
-        print(f"✅ 블로그 포스팅 성공: {result.get('url')}")
+        print(f"✅ 블로그 포스팅 성공 (주소 일치 완료): {result.get('url')}")
         
     except Exception as e:
-        print(f"❌ 포스팅(또는 덮어쓰기) 중 에러 발생. 초안 상태로 중단되었습니다: {e}")
+        # 3. 🚨 덮어쓰기 에러 시, 이상한 영문 제목 글이 대중에게 노출되는 것을 막기 위해 '즉시 강제 삭제'
+        print(f"❌ 제목 덮어쓰기 에러 발생! 라이브 방지를 위해 해당 글을 즉시 삭제합니다: {e}")
+        service.posts().delete(blogId=BLOGGER_ID, postId=post_id).execute()
+        print("➡️ 글이 삭제되었으므로 내일 다시 이 글부터 포스팅을 재도전합니다.")
 
 def main():
     service = get_blogger_service()
