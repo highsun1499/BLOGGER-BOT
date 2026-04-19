@@ -28,4 +28,4 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           BLOGGER_ID: ${{ secrets.BLOGGER_ID }}
           BLOGGER_TOKEN: ${{ secrets.BLOGGER_TOKEN }}
-        run: bot_nvidia.py
+        run: python bot_nvidia.py
